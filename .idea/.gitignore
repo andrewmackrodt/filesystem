@@ -1,0 +1,9 @@
+/*
+!.gitignore
+!*.iml
+!encodings.xml
+!modules.xml
+!php.xml
+!runConfigurations/
+!vcs.xml
+!watcherTasks.xml
