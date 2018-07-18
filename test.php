@@ -16,11 +16,11 @@ $eventLoop = Loop::get();
  * nor does it error when attempting to scandir an empty directory, however, it appears to be
  * blocking, making standard PHP functions better.
  */
-//if (\extension_loaded('eio')) {
-//    $driver = new \Amp\File\EioDriver();
-//
-//    $eventLoop->setState(LOOP_STATE_IDENTIFIER, $driver);
-//}
+if (getenv('EIO_ENABLED') === '1') {
+    $driver = new \Amp\File\EioDriver();
+
+    $eventLoop->setState(LOOP_STATE_IDENTIFIER, $driver);
+}
 
 Loop::run(function () use ($eventLoop) {
     $filesystem = new Filesystem();
