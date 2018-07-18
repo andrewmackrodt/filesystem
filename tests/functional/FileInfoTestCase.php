@@ -12,7 +12,7 @@ use function Test\Support\proxy;
 
 abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
 {
-    public function setUp(): void
+    public function setUp()
     {
         parent::setUp();
 
@@ -24,7 +24,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
         }
     }
 
-    public function tearDown(): void
+    public function tearDown()
     {
         parent::tearDown();
 
@@ -66,7 +66,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
      *
      * @param string $pathname
      */
-    public function testGettersFileOrDirectoryPath(string $pathname): void
+    public function testGettersFileOrDirectoryPath(string $pathname)
     {
         $this->assertGettersSame($pathname);
     }
@@ -76,7 +76,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
      *
      * @param string $pathname
      */
-    public function testGettersLinkPath(string $pathname): void
+    public function testGettersLinkPath(string $pathname)
     {
         $link = sys_get_temp_dir() . '/denimsoft_file_' . uniqid();
         symlink($pathname, $link);
@@ -113,17 +113,17 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
             'path'        => $proxy->getPath(),
             'pathname'    => $proxy->getPathname(),
             'perms'       => $proxy->getPerms(),
-            //            'readable'    => $proxy->isReadable(),
-            'real_path' => $proxy->getRealPath(),
-            'size'      => $proxy->getSize(),
-            'type'      => $proxy->getType(),
-            //            'writable'    => $proxy->isWritable(),
+            'readable'    => $proxy->isReadable(),
+            'real_path'   => $proxy->getRealPath(),
+            'size'        => $proxy->getSize(),
+            'type'        => $proxy->getType(),
+            'writable'    => $proxy->isWritable(),
         ];
     }
 
     abstract protected function getTestFileInfoData(string $pathname): array;
 
-    private function assertGettersSame(string $pathname): void
+    private function assertGettersSame(string $pathname)
     {
         $expected = $this->extract(new \SplFileInfo($pathname));
         $actual   = $this->getTestFileInfoData($pathname);

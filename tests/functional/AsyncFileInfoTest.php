@@ -29,7 +29,7 @@ class AsyncFileInfoTest extends FileInfoTestCase
         return $data;
     }
 
-    private function assertArrayOf($expectedType, array $array): void
+    private function assertArrayOf($expectedType, array $array)
     {
         $typeErrors = array_filter($array, function ($value) use ($expectedType) {
             return ! $value instanceof $expectedType;

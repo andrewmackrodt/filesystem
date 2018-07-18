@@ -12,9 +12,19 @@ class ImmutableFileInfo extends \SplFileInfo
     private $cwd;
 
     /**
+     * @var bool
+     */
+    private $executable;
+
+    /**
      * @var string
      */
     private $pathname;
+
+    /**
+     * @var bool
+     */
+    private $readable;
 
     /**
      * @var array|null
@@ -25,24 +35,29 @@ class ImmutableFileInfo extends \SplFileInfo
      */
     private $target;
 
+    /**
+     * @var bool
+     */
+    private $writable;
+
     public function __construct(
         string $pathname,
         string $cwd,
         array $stat = null,
-        string $target = null
+        string $target = null,
+        bool $readable = false,
+        bool $writable = false,
+        bool $executable = false
     ) {
-        // no call to parent constructor
+        parent::__construct($pathname);
 
-        if (isset($stat['nlink'])) {
-            $stat['link'] = $stat['nlink'];
-
-            unset($stat['nlink']);
-        }
-
-        $this->pathname = $pathname;
-        $this->stat     = $stat;
-        $this->cwd      = $cwd;
-        $this->target   = $target;
+        $this->pathname   = $pathname;
+        $this->stat       = $stat;
+        $this->cwd        = $cwd;
+        $this->target     = $target;
+        $this->readable   = $readable;
+        $this->writable   = $writable;
+        $this->executable = $executable;
     }
 
     public function getATime(): int
@@ -52,21 +67,6 @@ class ImmutableFileInfo extends \SplFileInfo
         return $this->stat['atime'];
     }
 
-    public function getBasename($suffix = null): string
-    {
-        $basename = \basename($this->pathname);
-
-        if ($suffix !== null) {
-            $length = strlen($suffix);
-
-            if (substr($basename, -$length) === $suffix) {
-                $basename = substr($basename, 0, -$length);
-            }
-        }
-
-        return $basename;
-    }
-
     public function getCTime(): int
     {
         $this->assertStatNotEmpty(__METHOD__);
@@ -74,25 +74,9 @@ class ImmutableFileInfo extends \SplFileInfo
         return $this->stat['ctime'];
     }
 
-    public function getExtension(): string
-    {
-        $filename = \basename($this->pathname);
-
-        if (($pos = strrpos($filename, '.')) === false) {
-            return '';
-        }
-
-        return substr($filename, $pos + 1);
-    }
-
     public function getFileInfo($className = null): \SplFileInfo
     {
         throw new \BadMethodCallException('Not Supported');
-    }
-
-    public function getFilename(): string
-    {
-        return \basename($this->pathname) ?: $this->pathname;
     }
 
     public function getGroup(): int
@@ -136,23 +120,14 @@ class ImmutableFileInfo extends \SplFileInfo
         return $this->stat['uid'];
     }
 
-    public function getPath(): string
-    {
-        if (($pos = strrpos($this->pathname, DIRECTORY_SEPARATOR)) !== false) {
-            return substr($this->pathname, 0, $pos);
-        }
-
-        return '';
-    }
-
-    public function getPathInfo($className = null): \SplFileInfo
+    /**
+     * @param string|null$className
+     *
+     * @throws \BadMethodCallException Always throws "Not Supported"
+     */
+    public function getPathInfo($className = null)
     {
         throw new \BadMethodCallException('Not Supported');
-    }
-
-    public function getPathname(): string
-    {
-        return $this->pathname;
     }
 
     public function getPerms(): int
@@ -164,12 +139,12 @@ class ImmutableFileInfo extends \SplFileInfo
 
     public function getRealPath()
     {
-        if (empty($this->stat)) {
+        if ( ! $this->stat) {
             return false;
         }
 
         if ($this->target) {
-            return normalizePath($this->target);
+            return $this->target;
         }
 
         return $this->pathname[0] === '/'
@@ -192,41 +167,34 @@ class ImmutableFileInfo extends \SplFileInfo
             return 'link';
         }
 
-        switch ($this->stat['link']) {
-            case 1:
-                return 'file';
-            default:
-                return 'dir';
+        if ( ! $this->stat) {
+            return 'file';
         }
+
+        return decoct($this->stat['mode'])[0] === '4' ? 'dir' : 'file';
     }
 
     public function isDir(): bool
     {
-        if (empty($this->stat)) {
+        if ( ! $this->stat) {
             return false;
         }
 
-        return $this->stat['link'] !== 1;
+        return decoct($this->stat['mode'])[0] === '4';
     }
 
     public function isExecutable(): bool
     {
-        if (empty($this->stat)) {
-            return false;
-        }
-
-        $octal = substr(decoct($this->stat['mode']), -3);
-
-        return (bool) preg_match('/[1357]/', $octal);
+        return $this->executable;
     }
 
     public function isFile(): bool
     {
-        if (empty($this->stat)) {
+        if ( ! $this->stat) {
             return false;
         }
 
-        return $this->stat['link'] === 1;
+        return decoct($this->stat['mode'])[0] !== '4';
     }
 
     public function isLink(): bool
@@ -236,12 +204,12 @@ class ImmutableFileInfo extends \SplFileInfo
 
     public function isReadable(): bool
     {
-        throw new \BadMethodCallException('Not Supported');
+        return $this->readable;
     }
 
     public function isWritable(): bool
     {
-        throw new \BadMethodCallException('Not Supported');
+        return $this->writable;
     }
 
     /**
@@ -249,24 +217,34 @@ class ImmutableFileInfo extends \SplFileInfo
      * @param bool   $useIncludePath
      * @param null   $context
      *
-     * @return \SplFileObject
+     * @throws \BadMethodCallException Always throws "Not Supported"
      */
     public function openFile($openMode = 'r', $useIncludePath = false, $context = null)
     {
         throw new \BadMethodCallException('Not Supported');
     }
 
-    public function setFileClass($className = null): void
+    /**
+     * @param string|null $className
+     *
+     * @throws \BadMethodCallException Always throws "Not Supported"
+     */
+    public function setFileClass($className = null)
     {
         throw new \BadMethodCallException('Not Supported');
     }
 
-    public function setInfoClass($className = null): void
+    /**
+     * @param string|null $className
+     *
+     * @throws \BadMethodCallException Always throws "Not Supported"
+     */
+    public function setInfoClass($className = null)
     {
         throw new \BadMethodCallException('Not Supported');
     }
 
-    private function assertStatNotEmpty(string $callerName, bool $lstat = false): void
+    private function assertStatNotEmpty(string $callerName, bool $lstat = false)
     {
         if ( ! empty($this->stat) || ($lstat && $this->target !== null)) {
             return;

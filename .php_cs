@@ -30,8 +30,8 @@ return PhpCsFixer\Config::create()
     ))
     ->setRiskyAllowed(true)
     ->setRules([
-        '@PHP71Migration'                        => true,
-        '@PHP71Migration:risky'                  => true,
+        '@PHP70Migration'                        => true,
+        '@PHP70Migration:risky'                  => true,
         '@PHPUnit60Migration:risky'              => true,
         '@PSR2'                                  => true,
         '@Symfony'                               => true,
@@ -66,7 +66,6 @@ return PhpCsFixer\Config::create()
         'phpdoc_order'                           => true,
         'phpdoc_var_without_name'                => false,
         'psr4'                                   => true,
-        'simplified_null_return'                 => true,
         'strict_comparison'                      => true,
         'strict_param'                           => true,
         'string_line_ending'                     => true,
