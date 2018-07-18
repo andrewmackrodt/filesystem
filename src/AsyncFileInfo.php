@@ -5,184 +5,314 @@ declare(strict_types=1);
 namespace Denimsoft\File;
 
 use Amp\Failure;
-use Amp\File\Driver as FileDriver;
 use Amp\Promise;
 use Amp\Success;
 use function Amp\call;
-use function Amp\Promise\all;
-use function Amp\Promise\any;
 
 /**
- * Asynchronous implementation of SplFileInfo, all public methods MUST return a Promise.
+ * @property-read string        $basename
+ * @property-read string        $extension
+ * @property-read string        $filename
+ * @property-read string        $path
+ * @property-read AsyncFileInfo $pathinfo
+ * @property-read string        $pathname
  */
-class AsyncFileInfo extends \SplFileInfo
+class AsyncFileInfo
 {
     /**
-     * @var FileDriver
+     * @var Filesystem
      */
-    private $fileDriver;
+    private $filesystem;
 
     /**
      * @var string
      */
     private $pathname;
 
-    public function __construct(string $pathname, FileDriver $fileDriver)
+    public function __construct(string $pathname, Filesystem $filesystem)
     {
-        parent::__construct($pathname);
-
         $this->pathname   = $pathname;
-        $this->fileDriver = $fileDriver;
+        $this->filesystem = $filesystem;
+    }
+
+    public function __get(string $name)
+    {
+        switch ($name) {
+            case 'basename':
+                return basename($this->pathname);
+
+            case 'extension':
+                $filename = basename($this->pathname);
+
+                if (($pos = strrpos($filename, '.')) === false) {
+                    return '';
+                }
+
+                return substr($filename, $pos + 1);
+
+            case 'filename':
+                return basename($this->pathname) ?: $this->pathname;
+
+            case 'path':
+            case 'pathinfo':
+                $path = '';
+                if (($pos = strrpos($this->pathname, DIRECTORY_SEPARATOR)) !== false) {
+                    $path = substr($this->pathname, 0, $pos);
+                }
+
+                if ($name === 'path') {
+                    return $path;
+                }
+
+                return new self($path, $this->filesystem);
+
+            case 'pathname':
+                return $this->pathname;
+        }
+
+        throw new \InvalidArgumentException("Property $name does not exist");
     }
 
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getATime(): Promise
+    public function atime(): Promise
     {
-        return $this->statAttr(__METHOD__, 'atime');
+        return $this->stat('atime');
     }
 
     /**
-     * @param string|null $suffix
-     *
-     * @return Promise|string
+     * @return \Amp\Promise<string>
      */
-    public function getBasename($suffix = null): Promise
+    public function basename(): Promise
     {
-        return new Success(parent::getBasename(...func_get_args()));
+        return new Success($this->basename);
+    }
+
+    /**
+     * chmod the file or directory.
+     *
+     * @param int $mode
+     *
+     * @return \Amp\Promise
+     */
+    public function chmod(int $mode): Promise
+    {
+        return $this->filesystem->chmod($this->pathname, $mode);
+    }
+
+    /**
+     * chown the file or directory.
+     *
+     * @param int $uid
+     * @param int $gid
+     *
+     * @return \Amp\Promise
+     */
+    public function chown(int $uid, int $gid): Promise
+    {
+        return $this->filesystem->chown($this->pathname, $uid, $gid);
     }
 
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getCTime(): Promise
+    public function ctime(): Promise
     {
-        return $this->statAttr(__METHOD__, 'ctime');
+        return $this->stat('ctime');
     }
 
     /**
-     * @return Promise|string
+     * @return \Amp\Promise<bool>
      */
-    public function getExtension(): Promise
+    public function dir(): Promise
     {
-        return new Success(parent::getExtension());
+        return $this->statOrFail(function (array $stat) {
+            return decoct($stat['mode'])[0] === '4';
+        });
     }
 
     /**
-     * @param string|null $className
+     * Note: this method is blocking.
      *
-     * @throws \BadMethodCallException Always throws "Not Supported"
-     *
-     * @return Promise|\SplFileInfo
+     * @return \Amp\Promise<bool>
      */
-    public function getFileInfo($className = null): Promise
+    public function executable(): Promise
     {
-        return new Failure(new \BadMethodCallException('Not Supported'));
+        return new Success(\is_executable($this->pathname));
     }
 
     /**
-     * @return Promise|string
+     * @return \Amp\Promise<bool>
      */
-    public function getFilename(): Promise
+    public function exists(): Promise
     {
-        return new Success(parent::getFilename());
+        return $this->filesystem->exists($this->pathname);
+    }
+
+    /**
+     * @return \Amp\Promise<string>
+     */
+    public function extension(): Promise
+    {
+        return new Success($this->extension);
+    }
+
+    /**
+     * @return \Amp\Promise<bool>
+     */
+    public function file(): Promise
+    {
+        return $this->statOrFail(function (array $stat) {
+            return decoct($stat['mode'])[0] !== '4';
+        });
+    }
+
+    /**
+     * @return \Amp\Promise<string>
+     */
+    public function filename(): Promise
+    {
+        return new Success($this->filename);
     }
 
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getGroup(): Promise
+    public function group(): Promise
     {
-        return $this->statAttr(__METHOD__, 'gid');
+        return $this->stat('gid');
     }
 
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getInode(): Promise
+    public function inode(): Promise
     {
-        return $this->statAttr(__METHOD__, 'ino');
+        return $this->stat('ino');
+    }
+
+    /**
+     * @return \Amp\Promise<bool>
+     */
+    public function link(): Promise
+    {
+        return call(function () {
+            if ( ! ($lstat = yield $this->filesystem->lstat($this->pathname))) {
+                return false;
+            }
+
+            $stat = yield $this->filesystem->stat($this->pathname);
+
+            return [$stat['dev'], $stat['ino']] !== [$lstat['dev'], $lstat['ino']];
+        });
     }
 
     /**
      * @throws \RuntimeException if the file does not exist or is not a link
      *
-     * @return Promise|string
+     * @return \Amp\Promise<AsyncFileInfo>
      */
-    public function getLinkTarget(): Promise
+    public function linktarget(): Promise
     {
         return call(function () {
             if ( ! ($target = yield $this->_getLinkTarget())) {
-                $n = yield all([$this->isLink(), $this->fileDriver->stat($this->pathname)]);
+                $exists = yield $this->exists();
 
                 return new Failure(new \RuntimeException(sprintf(
                     'Unable to read link %s, error: %s',
                     $this->pathname,
-                    $n[1] ? 'Invalid argument' : 'No such file or directory'
+                    $exists ? 'Invalid argument' : 'No such file or directory'
                 )));
             }
 
-            return $target;
+            return new self($target, $this->filesystem);
+        });
+    }
+
+    /**
+     * @param string|null $key
+     *
+     * @throws \RuntimeException if the file does not exist
+     *
+     * @return \Amp\Promise<array|int>
+     */
+    public function lstat(string $key = null): Promise
+    {
+        return call(function () use ($key) {
+            if ( ! ($stat = yield $this->filesystem->lstat($this->pathname))) {
+                return new Failure(new \RuntimeException("lstat failed for {$this->pathname}"));
+            }
+
+            if ($key !== null) {
+                $stat = $stat[$key];
+            }
+
+            return $stat;
         });
     }
 
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getMTime(): Promise
+    public function mtime(): Promise
     {
-        return $this->statAttr(__METHOD__, 'mtime');
+        return $this->stat('mtime');
+    }
+
+    /**
+     * @param string $mode
+     *
+     * @throws \InvalidArgumentException if useIncludePath is not FALSE
+     * @throws \InvalidArgumentException if context is not NULL
+     *
+     * @return \Amp\Promise<\Amp\File\Handle>
+     */
+    public function open($mode = 'r'): Promise
+    {
+        return $this->filesystem->open($this->pathname, $mode);
     }
 
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getOwner(): Promise
+    public function owner(): Promise
     {
-        return $this->statAttr(__METHOD__, 'uid');
+        return $this->stat('uid');
     }
 
     /**
-     * @return Promise|string
+     * @return \Amp\Promise<string>
      */
-    public function getPath(): Promise
+    public function path(): Promise
     {
-        return new Success(parent::getPath());
+        return new Success($this->path);
     }
 
     /**
-     * @param string|null $className
-     *
-     * @throws \InvalidArgumentException if className is not NULL
-     *
-     * @return Promise|\SplFileInfo
+     * @return \Amp\Promise<AsyncFileInfo>
      */
-    public function getPathInfo($className = null): Promise
+    public function pathinfo(): Promise
     {
-        if ($className !== null) {
-            return new Failure(new \InvalidArgumentException('className is not supported'));
-        }
-
-        return new Success(new self(parent::getPath(), $this->fileDriver));
+        return new Success($this->pathinfo);
     }
 
     /**
-     * @return Promise|string
+     * @return \Amp\Promise<string>
      */
-    public function getPathname(): Promise
+    public function pathname(): Promise
     {
         return new Success($this->pathname);
     }
@@ -190,25 +320,38 @@ class AsyncFileInfo extends \SplFileInfo
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getPerms(): Promise
+    public function permissions(): Promise
     {
-        return $this->statAttr(__METHOD__, 'mode');
+        return $this->stat('mode');
     }
 
     /**
-     * @return Promise|string|false
+     * Note: this method is blocking.
+     *
+     * @return \Amp\Promise<bool>
      */
-    public function getRealPath(): Promise
+    public function readable(): Promise
+    {
+        return new Success(\is_readable($this->pathname));
+    }
+
+    /**
+     * @return \Amp\Promise<string|false>
+     */
+    public function realpath(): Promise
     {
         return call(function () {
-            if ( ! yield $this->fileDriver->exists($this->pathname)) {
+            if ( ! yield $this->exists()) {
                 return false;
             }
 
-            if (yield $this->isLink()) {
-                return $this->getLinkTarget();
+            if (yield $this->link()) {
+                /** @var self $target */
+                $target = yield $this->linktarget();
+
+                return $target->pathname;
             }
 
             return $this->pathname[0] === '/'
@@ -220,213 +363,88 @@ class AsyncFileInfo extends \SplFileInfo
     /**
      * @throws \RuntimeException If the file does not exist
      *
-     * @return Promise|int
+     * @return \Amp\Promise<int>
      */
-    public function getSize()
+    public function size()
     {
-        return $this->statAttr(__METHOD__, 'size');
+        return $this->stat('size');
     }
 
     /**
-     * @return Promise|string|false
+     * @param string|null $key
+     *
+     * @throws \RuntimeException if the file does not exist
+     *
+     * @return \Amp\Promise<array|int>
      */
-    public function getType(): Promise
+    public function stat(string $key = null): Promise
+    {
+        return call(function () use ($key) {
+            if ( ! ($stat = yield $this->filesystem->stat($this->pathname))) {
+                return new Failure(new \RuntimeException("stat failed for {$this->pathname}"));
+            }
+
+            if ($key !== null) {
+                $stat = $stat[$key];
+            }
+
+            return $stat;
+        });
+    }
+
+    /**
+     * @throws \RuntimeException if the file does not exist
+     *
+     * @return \Amp\Promise<string|false>
+     */
+    public function type(): Promise
     {
         return call(function () {
-            $lstat = yield $this->lstat('SplFileInfo::getType');
-
-            if ( ! $lstat) {
-                return false;
-            }
-
-            if (($isLink = $this->isLink()) instanceof Promise) {
-                $isLink = yield $isLink;
-            }
-
-            if ($isLink) {
+            if (yield $this->link()) {
                 return 'link';
             }
 
-            return (yield $this->isDir()) ? 'dir' : 'file';
-        });
-    }
+            $stat = yield $this->filesystem->stat($this->pathname);
 
-    public function isDir(): Promise
-    {
-        return $this->tryCallStat(function (array $stat) {
-            return decoct($stat['mode'])[0] === '4';
-        });
-    }
+            if ( ! $stat) {
+                yield $this->lstat();
 
-    public function isExecutable(): Promise
-    {
-        return new Success(\is_executable($this->pathname));
-    }
-
-    public function isFile(): Promise
-    {
-        return $this->tryCallStat(function (array $stat) {
-            return decoct($stat['mode'])[0] !== '4';
-        });
-    }
-
-    public function isLink(): Promise
-    {
-        return call(function () {
-            if ( ! ($lstat = yield $this->fileDriver->lstat($this->pathname))) {
                 return false;
             }
 
-            $stat = yield $this->fileDriver->stat($this->pathname);
-
-            return [$stat['dev'], $stat['ino']] !== [$lstat['dev'], $lstat['ino']];
+            return (yield $this->dir()) ? 'dir' : 'file';
         });
     }
 
-    public function isReadable(): Promise
-    {
-        return new Success(\is_readable($this->pathname));
-    }
-
-    public function isWritable(): Promise
+    /**
+     * Note: this method is blocking.
+     *
+     * @return \Amp\Promise<bool>
+     */
+    public function writable(): Promise
     {
         return new Success(\is_writable($this->pathname));
     }
 
     /**
-     * @param string $openMode
-     * @param bool   $useIncludePath
-     * @param null   $context
-     *
-     * @throws \InvalidArgumentException if useIncludePath is not FALSE
-     * @throws \InvalidArgumentException if context is not NULL
-     *
-     * @return Promise|\SplFileObject
-     */
-    public function openFile($openMode = 'r', $useIncludePath = false, $context = null): Promise
-    {
-        if ($useIncludePath !== false) {
-            return new Failure(new \InvalidArgumentException('useIncludePath is not supported'));
-        }
-
-        if ($context !== null) {
-            return new Failure(new \InvalidArgumentException('context is not supported'));
-        }
-
-        return $this->fileDriver->open($this->pathname, $openMode);
-    }
-
-    /**
-     * @param string|null $className
-     *
-     * @throws \BadMethodCallException Always throws "Not Supported"
-     *
-     * @return Promise
-     */
-    public function setFileClass($className = null): Promise
-    {
-        return new Failure(new \BadMethodCallException('Not Supported'));
-    }
-
-    /**
-     * @param string|null $className
-     *
-     * @throws \BadMethodCallException Always throws "Not Supported"
-     *
-     * @return Promise
-     */
-    public function setInfoClass($className = null): Promise
-    {
-        return new Failure(new \BadMethodCallException('Not Supported'));
-    }
-
-    /**
-     * @return Promise|ImmutableFileInfo
-     */
-    public function toImmutable(): Promise
-    {
-        return call(function () {
-            $yielded = yield any([
-                $this->fileDriver->stat($this->pathname),
-                $this->_getLinkTarget(),
-                $this->isReadable(),
-                $this->isWritable(),
-                $this->isExecutable(),
-            ]);
-
-            $results = $yielded[1];
-            $stat = $results[0] ?? [];
-            $target = $results[1] ?? null;
-            $readable = $results[2] ?? false;
-            $writable = $results[3] ?? false;
-            $executable = $results[4] ?? false;
-
-            return new ImmutableFileInfo($this->pathname, getcwd(), $stat, $target, $readable, $writable, $executable);
-        });
-    }
-
-    /**
-     * @return Promise|string|null
+     * @return \Amp\Promise<string|null>
      */
     private function _getLinkTarget(): Promise
     {
         return call(function () {
             // check if link first to avoid crash in extension
-            if ( ! yield $this->isLink()) {
+            if ( ! yield $this->link()) {
                 return null;
             }
 
-            return $this->fileDriver->readlink($this->pathname);
+            return $this->filesystem->readlink($this->pathname);
         });
     }
 
-    /**
-     * @param string $caller
-     *
-     * @throws \RuntimeException if the file does not exist
-     *
-     * @return Promise|array
-     */
-    private function lstat(string $caller): Promise
-    {
-        return call(function () use ($caller) {
-            if ( ! ($lstat = yield $this->fileDriver->lstat($this->pathname))) {
-                return new Failure(new \RuntimeException(sprintf(
-                    '%s(): Lstat failed for %s',
-                    preg_replace('#^.+::#', 'SplFileInfo::', $caller),
-                    $this->pathname
-                )));
-            }
-
-            return $lstat;
-        });
-    }
-
-    /**
-     * @param string $caller
-     * @param string $key
-     *
-     * @return Promise|int
-     */
-    private function statAttr(string $caller, string $key): Promise
-    {
-        return call(function () use ($caller, $key) {
-            if ( ! ($stat = yield $this->fileDriver->stat($this->pathname))) {
-                return new Failure(new \RuntimeException(sprintf(
-                    '%s(): stat failed for %s',
-                    preg_replace('#^.+::#', 'SplFileInfo::', $caller),
-                    $this->pathname
-                )));
-            }
-
-            return $stat[$key];
-        });
-    }
-
-    private function tryCallStat(callable $callable)
+    private function statOrFail(callable $callable)
     {
         return call(function () use ($callable) {
-            if ( ! ($stat = yield $this->fileDriver->stat($this->pathname))) {
+            if ( ! ($stat = yield $this->filesystem->stat($this->pathname))) {
                 return false;
             }
 

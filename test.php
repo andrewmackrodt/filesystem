@@ -2,58 +2,63 @@
 
 declare(strict_types=1);
 
-use Amp\File\EioDriver;
 use Amp\Loop;
+use Denimsoft\File\AsyncFileInfo;
 use Denimsoft\File\Filesystem;
 use const Amp\File\LOOP_STATE_IDENTIFIER;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-if (\extension_loaded('eio')) {
-    $driver = new EioDriver();
+$eventLoop = Loop::get();
 
-    Loop::setState(LOOP_STATE_IDENTIFIER, $driver);
-}
+/*
+ * EIO should be preferred as it does not cause crashes when attempting readlink on an invalid path
+ * nor does it error when attempting to scandir an empty directory, however, it appears to be
+ * blocking, making standard PHP functions better.
+ */
+//if (\extension_loaded('eio')) {
+//    $driver = new \Amp\File\EioDriver();
+//
+//    $eventLoop->setState(LOOP_STATE_IDENTIFIER, $driver);
+//}
 
-function getFilesBlocking(string $path): array
-{
-    $files = [];
+Loop::run(function () use ($eventLoop) {
+    $filesystem = new Filesystem();
+    $i = 0;
+    echo 'Starting [' . preg_replace('/^.+\\\/', '', get_class($eventLoop->getState(LOOP_STATE_IDENTIFIER))) . "] ...\n\n";
 
-    /* @var SplFileInfo[] $dirFiles */
-    $dirFiles = iterator_to_array(
-        new RecursiveDirectoryIterator(
-            $path,
-            RecursiveDirectoryIterator::SKIP_DOTS
-        )
-    );
+    $timer = $eventLoop->repeat(10, function () use ($eventLoop, &$i, &$files) {
+        $i++;
 
-    foreach ($dirFiles as $file) {
-        $files[$file->getPathname()] = $file;
-    }
-
-    foreach ($dirFiles as $file) {
-        if ( ! $file->isDir() || $file->isLink()) {
-            continue;
+        if ($files) {
+            return;
         }
 
-        $files = array_replace($files, getFilesBlocking($file->getPathname()));
+        if ($i > 100) {
+            fwrite(STDERR, "Error: timeout, aborting ...\n");
+
+            $eventLoop->stop();
+
+            return;
+        }
+
+        echo '... 10 ms timer (' . number_format(microtime(true), 6, '', '') . ") ...\n";
+    });
+
+    $startedAt = microtime(true);
+    $files = yield $filesystem->scandir('.', true);
+    $eventLoop->unreference($timer);
+
+    echo "\n";
+    echo 'Found ' . count($files) . ' files in ' . number_format(microtime(true) - $startedAt, 3) . " seconds\n\n";
+
+    /* @var AsyncFileInfo $file */
+    echo "First 10 files:\n";
+    foreach (array_slice($files, 0, 10) as $file) {
+        echo "  {$file->pathname} : " , (yield $file->size()), "\n";
     }
 
-    ksort($files);
-
-    return $files;
-}
-
-Loop::run(function () {
-    $startedAt = microtime(true);
-    $blockingFiles = getFilesBlocking(__DIR__);
-    echo number_format(microtime(true) - $startedAt, 3) . " seconds\n";
-
-    $startedAt = microtime(true);
-    $asyncFilesystem = new Filesystem();
-    $asyncFiles = yield $asyncFilesystem->scandir(__DIR__, true);
-    echo number_format(microtime(true) - $startedAt, 3) . " seconds\n";
-
-    $n = '';
-//    echo print_r(Amp\File\StatCache::get(__DIR__ . '/composer.json'), true);
+    if ($i === 0) {
+        fwrite(STDERR, "Error: file scanning was blocking\n");
+    }
 });

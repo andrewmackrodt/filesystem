@@ -8,7 +8,7 @@ use Amp\Deferred;
 use Amp\File\Driver;
 use Amp\Promise;
 
-class AsyncDirectoryScanner
+class DirectoryScanner
 {
     /**
      * @var Driver
@@ -116,7 +116,7 @@ class AsyncDirectoryScanner
         $pending  = \count($files);
 
         foreach ($files as $pathname => $file) {
-            $file->isDir()
+            $file->dir()
                 ->onResolve(function ($error, $result) use ($pathname, $deferred, &$allFiles, &$pending) {
                     $this->onDir((bool) $result, $pathname, $deferred, $allFiles, $pending);
                 })

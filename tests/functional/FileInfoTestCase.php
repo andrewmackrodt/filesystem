@@ -7,6 +7,7 @@ namespace Test\Functional;
 use Amp\File\EioDriver;
 use Amp\File\StatCache;
 use Amp\Loop;
+use Denimsoft\File\AsyncFileInfo;
 use const Amp\File\LOOP_STATE_IDENTIFIER;
 use function Test\Support\proxy;
 
@@ -90,7 +91,38 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
         }
     }
 
-    protected function extract(\SplFileInfo $fileInfo)
+    protected function extractAsyncFileInfo(AsyncFileInfo $fileInfo)
+    {
+        /** @var AsyncFileInfo $proxy */
+        $proxy = proxy($fileInfo);
+
+        return [
+            'atime'       => $proxy->atime(),
+            'basename'    => $proxy->basename(),
+            'ctime'       => $proxy->ctime(),
+            'dir'         => $proxy->dir(),
+            'executable'  => $proxy->executable(),
+            'extension'   => $proxy->extension(),
+            'file'        => $proxy->file(),
+            'filename'    => $proxy->filename(),
+            'group'       => $proxy->group(),
+            'inode'       => $proxy->inode(),
+            'link'        => $proxy->link(),
+            'link_target' => $proxy->linktarget(),
+            'mtime'       => $proxy->mtime(),
+            'owner'       => $proxy->owner(),
+            'path'        => $proxy->path(),
+            'pathname'    => $proxy->pathname(),
+            'perms'       => $proxy->permissions(),
+            'readable'    => $proxy->readable(),
+            'real_path'   => $proxy->realpath(),
+            'size'        => $proxy->size(),
+            'type'        => $proxy->type(),
+            'writable'    => $proxy->writable(),
+        ];
+    }
+
+    protected function extractSplFileInfo(\SplFileInfo $fileInfo)
     {
         /** @var \SplFileInfo $proxy */
         $proxy = proxy($fileInfo);
@@ -125,7 +157,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
 
     private function assertGettersSame(string $pathname)
     {
-        $expected = $this->extract(new \SplFileInfo($pathname));
+        $expected = $this->extractSplFileInfo(new \SplFileInfo($pathname));
         $actual   = $this->getTestFileInfoData($pathname);
 
         $this->assertSame($expected, $actual);

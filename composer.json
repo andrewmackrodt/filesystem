@@ -36,7 +36,8 @@
   "autoload-dev": {
     "psr-4": {
       "Test\\Functional\\": "tests/functional/",
-      "Test\\Support\\": "tests/support/"
+      "Test\\Support\\": "tests/support/",
+      "Test\\Unit\\": "tests/unit/"
     },
     "files": [
       "tests/support/functions.php"

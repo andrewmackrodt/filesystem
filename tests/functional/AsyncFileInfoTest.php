@@ -7,6 +7,7 @@ namespace Test\Functional;
 use Amp\Loop;
 use Amp\Promise;
 use Denimsoft\File\AsyncFileInfo;
+use Denimsoft\File\Filesystem;
 use function Amp\File\driver;
 use function Amp\Promise\any;
 use function Test\Support\failedThrowableToArray;
@@ -15,13 +16,17 @@ class AsyncFileInfoTest extends FileInfoTestCase
 {
     protected function getTestFileInfoData(string $pathname): array
     {
-        $promises = $this->extract(new AsyncFileInfo($pathname, driver()));
+        $filesystem = new Filesystem(driver());
+        $promises   = $this->extractAsyncFileInfo(new AsyncFileInfo($pathname, $filesystem));
         $this->assertArrayOf(Promise::class, $promises);
 
         // resolve promises
         $data = [];
         Loop::run(function () use ($promises, &$data) {
             list($failed, $succeeded) = yield any($promises);
+            if ( ! empty($succeeded['link_target'])) {
+                $succeeded['link_target'] = yield $succeeded['link_target']->pathname();
+            }
             $data = failedThrowableToArray($failed) + $succeeded;
             ksort($data);
         });

@@ -16,7 +16,7 @@ namespace Test\Support {
     function throwableToArray(\Throwable $t): array
     {
         return [
-            'message'   => $t->getMessage(),
+            'message'   => strtolower(preg_replace('/^.+?: /', '', $t->getMessage())),
             'code'      => $t->getCode(),
             'exception' => get_class($t),
         ];
