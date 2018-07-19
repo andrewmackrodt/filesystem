@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Denimsoft\File;
 
+use Amp\Deferred;
 use Amp\File\Driver;
 use Amp\Promise;
 use Amp\Success;
@@ -12,13 +13,19 @@ use function Amp\File\filesystem;
 class Filesystem
 {
     /**
+     * @var DirectoryScanner
+     */
+    private $directoryScanner;
+
+    /**
      * @var Driver
      */
     private $driver;
 
     public function __construct(Driver $driver = null)
     {
-        $this->driver = $driver ?? filesystem();
+        $this->driver           = $driver ?? filesystem();
+        $this->directoryScanner = new DirectoryScanner($this, $this->driver);
     }
 
     /**
@@ -90,11 +97,25 @@ class Filesystem
     /**
      * @param string $path
      *
-     * @return \Amp\Promise<AsyncFileInfo>
+     * @return \Amp\Promise<File|Directory>
      */
     public function fileinfo(string $path): Promise
     {
-        return new Success(new AsyncFileInfo($path, $this));
+        $deferred = new Deferred();
+
+        $this->driver->isdir($path)
+            ->onResolve(function ($error, $result) use ($path, $deferred) {
+                if ($result) {
+                    $node = new Directory($path, $this);
+                } else {
+                    $node = new File($path, $this);
+                }
+
+                $deferred->resolve($node);
+            })
+        ;
+
+        return $deferred->promise();
     }
 
     /**
@@ -264,16 +285,7 @@ class Filesystem
      */
     public function scandir(string $path, bool $recursive = false): Promise
     {
-        return (new DirectoryScanner(
-                $this->driver,
-                function (string $pathname): AsyncFileInfo {
-                    return new AsyncFileInfo($pathname, $this);
-                },
-                $path,
-                $recursive
-            ))
-            ->listFiles()
-        ;
+        return $this->directoryScanner->listFiles($path, $recursive);
     }
 
     /**

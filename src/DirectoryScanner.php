@@ -16,112 +16,86 @@ class DirectoryScanner
     private $driver;
 
     /**
-     * @var callable
+     * @var Filesystem
      */
-    private $fileInfoBuilder;
+    private $filesystem;
 
-    /**
-     * @var string
-     */
-    private $pathname;
-
-    /**
-     * @var bool
-     */
-    private $recursive;
-
-    public function __construct(
-        Driver $driver,
-        callable $fileInfoBuilder,
-        string $pathname,
-        bool $recursive = false
-    ) {
-        $this->driver          = $driver;
-        $this->fileInfoBuilder = $fileInfoBuilder;
-        $this->pathname        = $pathname;
-        $this->recursive       = $recursive;
+    public function __construct(Filesystem $filesystem, Driver $driver)
+    {
+        $this->filesystem = $filesystem;
+        $this->driver     = $driver;
     }
 
-    public function listFiles(): Promise
+    public function listFiles(string $pathname, bool $recursive = false): Promise
     {
         $deferred = new Deferred();
 
-        $this->driver->scandir($this->pathname)
-            ->onResolve(function ($error, $result) use ($deferred) {
+        $this->driver->scandir($pathname)
+            ->onResolve(function ($error, $result) use ($pathname, $recursive, $deferred) {
                 // ignore the error, e.g. uv cannot scan an empty directory
-                if ((bool) $error) {
-                    $result = [];
+                if ( ! $result) {
+                    $deferred->resolve([]);
+
+                    return;
                 }
 
-                $this->onScandir($result, $deferred);
+                $this->onScandir($pathname, $recursive, $result, $deferred);
             })
         ;
 
         return $deferred->promise();
     }
 
-    private function onDir(bool $isDir, string $pathname, Deferred $deferred, array &$allFiles, int &$pending)
+    private function onScandir(string $basepath, bool $recursive, array $filenames, Deferred $deferred)
     {
-        // not a directory
-        if ( ! $isDir) {
-            $pending--;
+        $pending = \count($filenames);
 
-            if ($pending === 0) {
-                ksort($allFiles);
-
-                $deferred->resolve($allFiles);
-            }
-
-            return;
-        }
-
-        (new self($this->driver, $this->fileInfoBuilder, $pathname, true))
-            ->listFiles()
-            ->onResolve(function ($error, $result) use ($deferred, &$allFiles, &$pending) {
-                $allFiles += $result;
-
-                $pending--;
-
-                if ($pending === 0) {
-                    ksort($allFiles);
-
-                    $deferred->resolve($allFiles);
-                }
-            })
-        ;
-    }
-
-    private function onScandir(array $filenames, Deferred $deferred)
-    {
         /**
-         * @var AsyncFileInfo[] $files
+         * @var Node[] $nodes
          */
-        $files = [];
+        $nodes = [];
 
         foreach ($filenames as $filename) {
-            $pathname         = $this->pathname . DIRECTORY_SEPARATOR . $filename;
-            $files[$pathname] = ($this->fileInfoBuilder)($pathname);
-        }
-        unset($filename);
+            $filepath = $basepath . DIRECTORY_SEPARATOR . $filename;
 
-        if ( ! $files || ! $this->recursive) {
-            ksort($files);
+            $this->driver->isdir($filepath)
+                ->onResolve(function ($error, $isDir) use ($recursive, $filepath, $deferred, &$nodes, &$pending) {
+                    if ($isDir) {
+                        // node is a directory
+                        $node = new Directory($filepath, $this->filesystem);
 
-            $deferred->resolve($files);
+                        if ($recursive) {
+                            $this->listFiles($filepath, true)
+                                ->onResolve(function ($error, $result) use ($deferred, &$nodes, &$pending) {
+                                    $nodes += $result;
+                                    $pending--;
+                                    $this->resolveIfNotPending($pending, $deferred, $nodes);
+                                })
+                            ;
+                        } else {
+                            $pending--;
+                        }
+                    } else {
+                        // node is a file
+                        $node = new File($filepath, $this->filesystem);
+                        $pending--;
+                    }
 
-            return;
-        }
-
-        $allFiles = $files;
-        $pending  = \count($files);
-
-        foreach ($files as $pathname => $file) {
-            $file->dir()
-                ->onResolve(function ($error, $result) use ($pathname, $deferred, &$allFiles, &$pending) {
-                    $this->onDir((bool) $result, $pathname, $deferred, $allFiles, $pending);
+                    $nodes[$filepath] = $node;
+                    $this->resolveIfNotPending($pending, $deferred, $nodes);
                 })
             ;
         }
-        unset($pathname, $file);
+    }
+
+    private function resolveIfNotPending(int $pending, Deferred $deferred, array $nodes)
+    {
+        if ($pending) {
+            return;
+        }
+
+        ksort($nodes);
+
+        $deferred->resolve($nodes);
     }
 }

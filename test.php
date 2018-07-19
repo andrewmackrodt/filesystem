@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use Amp\Loop;
-use Denimsoft\File\AsyncFileInfo;
 use Denimsoft\File\Filesystem;
+use Denimsoft\File\Node;
 use const Amp\File\LOOP_STATE_IDENTIFIER;
 
 require_once __DIR__ . '/vendor/autoload.php';
@@ -52,7 +52,7 @@ Loop::run(function () use ($eventLoop) {
     echo "\n";
     echo 'Found ' . count($files) . ' files in ' . number_format(microtime(true) - $startedAt, 3) . " seconds\n\n";
 
-    /* @var AsyncFileInfo $file */
+    /* @var Node $file */
     echo "First 10 files:\n";
     foreach (array_slice($files, 0, 10) as $file) {
         echo "  {$file->pathname} : " , (yield $file->size()), "\n";

@@ -10,14 +10,13 @@ use Amp\Success;
 use function Amp\call;
 
 /**
- * @property-read string        $basename
- * @property-read string        $extension
- * @property-read string        $filename
- * @property-read string        $path
- * @property-read AsyncFileInfo $pathinfo
- * @property-read string        $pathname
+ * @property-read string    $basename
+ * @property-read string    $filename
+ * @property-read Directory $parent
+ * @property-read string    $path
+ * @property-read string    $pathname
  */
-class AsyncFileInfo
+abstract class Node
 {
     /**
      * @var Filesystem
@@ -41,20 +40,11 @@ class AsyncFileInfo
             case 'basename':
                 return basename($this->pathname);
 
-            case 'extension':
-                $filename = basename($this->pathname);
-
-                if (($pos = strrpos($filename, '.')) === false) {
-                    return '';
-                }
-
-                return substr($filename, $pos + 1);
-
             case 'filename':
                 return basename($this->pathname) ?: $this->pathname;
 
+            case 'parent':
             case 'path':
-            case 'pathinfo':
                 $path = '';
                 if (($pos = strrpos($this->pathname, DIRECTORY_SEPARATOR)) !== false) {
                     $path = substr($this->pathname, 0, $pos);
@@ -64,7 +54,7 @@ class AsyncFileInfo
                     return $path;
                 }
 
-                return new self($path, $this->filesystem);
+                return new Directory($path, $this->filesystem);
 
             case 'pathname':
                 return $this->pathname;
@@ -74,7 +64,9 @@ class AsyncFileInfo
     }
 
     /**
-     * @throws \RuntimeException If the file does not exist
+     * Returns the node last access time.
+     *
+     * @throws \RuntimeException if the node does not exist
      *
      * @return \Amp\Promise<int>
      */
@@ -84,6 +76,8 @@ class AsyncFileInfo
     }
 
     /**
+     * Returns the node basename.
+     *
      * @return \Amp\Promise<string>
      */
     public function basename(): Promise
@@ -127,16 +121,6 @@ class AsyncFileInfo
     }
 
     /**
-     * @return \Amp\Promise<bool>
-     */
-    public function dir(): Promise
-    {
-        return $this->statOrFail(function (array $stat) {
-            return decoct($stat['mode'])[0] === '4';
-        });
-    }
-
-    /**
      * Note: this method is blocking.
      *
      * @return \Amp\Promise<bool>
@@ -152,24 +136,6 @@ class AsyncFileInfo
     public function exists(): Promise
     {
         return $this->filesystem->exists($this->pathname);
-    }
-
-    /**
-     * @return \Amp\Promise<string>
-     */
-    public function extension(): Promise
-    {
-        return new Success($this->extension);
-    }
-
-    /**
-     * @return \Amp\Promise<bool>
-     */
-    public function file(): Promise
-    {
-        return $this->statOrFail(function (array $stat) {
-            return decoct($stat['mode'])[0] !== '4';
-        });
     }
 
     /**
@@ -234,7 +200,7 @@ class AsyncFileInfo
                 )));
             }
 
-            return new self($target, $this->filesystem);
+            return new static($target, $this->filesystem);
         });
     }
 
@@ -271,19 +237,6 @@ class AsyncFileInfo
     }
 
     /**
-     * @param string $mode
-     *
-     * @throws \InvalidArgumentException if useIncludePath is not FALSE
-     * @throws \InvalidArgumentException if context is not NULL
-     *
-     * @return \Amp\Promise<\Amp\File\Handle>
-     */
-    public function open($mode = 'r'): Promise
-    {
-        return $this->filesystem->open($this->pathname, $mode);
-    }
-
-    /**
      * @throws \RuntimeException If the file does not exist
      *
      * @return \Amp\Promise<int>
@@ -294,19 +247,19 @@ class AsyncFileInfo
     }
 
     /**
+     * @return \Amp\Promise<Directory|null>
+     */
+    public function parent(): Promise
+    {
+        return new Success($this->parent);
+    }
+
+    /**
      * @return \Amp\Promise<string>
      */
     public function path(): Promise
     {
         return new Success($this->path);
-    }
-
-    /**
-     * @return \Amp\Promise<AsyncFileInfo>
-     */
-    public function pathinfo(): Promise
-    {
-        return new Success($this->pathinfo);
     }
 
     /**
@@ -438,17 +391,6 @@ class AsyncFileInfo
             }
 
             return $this->filesystem->readlink($this->pathname);
-        });
-    }
-
-    private function statOrFail(callable $callable)
-    {
-        return call(function () use ($callable) {
-            if ( ! ($stat = yield $this->filesystem->stat($this->pathname))) {
-                return false;
-            }
-
-            return $callable($stat);
         });
     }
 }
