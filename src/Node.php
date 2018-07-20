@@ -10,23 +10,24 @@ use Amp\Success;
 use function Amp\call;
 
 /**
- * @property-read string    $basename
- * @property-read string    $filename
- * @property-read Directory $parent
- * @property-read string    $path
- * @property-read string    $pathname
+ * @property-read string         $basename
+ * @property-read string|null    $extension
+ * @property-read string         $filename
+ * @property-read Directory|null $parent
+ * @property-read string|null    $path
+ * @property-read string         $pathname
  */
 abstract class Node
 {
     /**
      * @var Filesystem
      */
-    private $filesystem;
+    protected $filesystem;
 
     /**
      * @var string
      */
-    private $pathname;
+    protected $pathname;
 
     public function __construct(string $pathname, Filesystem $filesystem)
     {
@@ -40,14 +41,26 @@ abstract class Node
             case 'basename':
                 return basename($this->pathname);
 
+            case 'extension':
+                $filename = basename($this->pathname);
+
+                if (($pos = strrpos($filename, '.')) === false) {
+                    return null;
+                }
+
+                return substr($filename, $pos + 1);
+
             case 'filename':
                 return basename($this->pathname) ?: $this->pathname;
 
             case 'parent':
             case 'path':
-                $path = '';
-                if (($pos = strrpos($this->pathname, DIRECTORY_SEPARATOR)) !== false) {
-                    $path = substr($this->pathname, 0, $pos);
+                if (($pos = strrpos($this->pathname, DIRECTORY_SEPARATOR)) === false) {
+                    return null;
+                }
+
+                if ( ! ($path = substr($this->pathname, 0, $pos))) {
+                    return null;
                 }
 
                 if ($name === 'path') {
@@ -121,21 +134,19 @@ abstract class Node
     }
 
     /**
-     * Note: this method is blocking.
-     *
-     * @return \Amp\Promise<bool>
-     */
-    public function executable(): Promise
-    {
-        return new Success(\is_executable($this->pathname));
-    }
-
-    /**
      * @return \Amp\Promise<bool>
      */
     public function exists(): Promise
     {
         return $this->filesystem->exists($this->pathname);
+    }
+
+    /**
+     * @return \Amp\Promise<string>
+     */
+    public function extension(): Promise
+    {
+        return new Success($this->extension);
     }
 
     /**
@@ -167,6 +178,36 @@ abstract class Node
     }
 
     /**
+     * Note: this method is blocking.
+     *
+     * @return \Amp\Promise<bool>
+     */
+    public function isExecutable(): Promise
+    {
+        return new Success(\is_executable($this->pathname));
+    }
+
+    /**
+     * Note: this method is blocking.
+     *
+     * @return \Amp\Promise<bool>
+     */
+    public function isReadable(): Promise
+    {
+        return new Success(\is_readable($this->pathname));
+    }
+
+    /**
+     * Note: this method is blocking.
+     *
+     * @return \Amp\Promise<bool>
+     */
+    public function isWritable(): Promise
+    {
+        return new Success(\is_writable($this->pathname));
+    }
+
+    /**
      * @return \Amp\Promise<bool>
      */
     public function link(): Promise
@@ -187,7 +228,7 @@ abstract class Node
      *
      * @return \Amp\Promise<AsyncFileInfo>
      */
-    public function linktarget(): Promise
+    public function linkTarget(): Promise
     {
         return call(function () {
             if ( ! ($target = yield $this->_getLinkTarget())) {
@@ -255,7 +296,7 @@ abstract class Node
     }
 
     /**
-     * @return \Amp\Promise<string>
+     * @return \Amp\Promise<string|null>
      */
     public function path(): Promise
     {
@@ -281,16 +322,6 @@ abstract class Node
     }
 
     /**
-     * Note: this method is blocking.
-     *
-     * @return \Amp\Promise<bool>
-     */
-    public function readable(): Promise
-    {
-        return new Success(\is_readable($this->pathname));
-    }
-
-    /**
      * @return \Amp\Promise<string|false>
      */
     public function realpath(): Promise
@@ -302,7 +333,7 @@ abstract class Node
 
             if (yield $this->link()) {
                 /** @var self $target */
-                $target = yield $this->linktarget();
+                $target = yield $this->linkTarget();
 
                 return $target->pathname;
             }
@@ -365,19 +396,14 @@ abstract class Node
                 return false;
             }
 
-            return (yield $this->dir()) ? 'dir' : 'file';
+            return $this->getNodeType();
         });
     }
 
     /**
-     * Note: this method is blocking.
-     *
-     * @return \Amp\Promise<bool>
+     * @return string
      */
-    public function writable(): Promise
-    {
-        return new Success(\is_writable($this->pathname));
-    }
+    abstract protected function getNodeType(): string;
 
     /**
      * @return \Amp\Promise<string|null>

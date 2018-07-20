@@ -8,7 +8,7 @@ use Amp\Deferred;
 use Amp\File\Driver;
 use Amp\Promise;
 
-class DirectoryScanner
+class Scanner
 {
     /**
      * @var Driver
@@ -56,13 +56,16 @@ class DirectoryScanner
         $nodes = [];
 
         foreach ($filenames as $filename) {
-            $filepath = $basepath . DIRECTORY_SEPARATOR . $filename;
+            $filepath = $basepath !== DIRECTORY_SEPARATOR
+                ? $basepath . DIRECTORY_SEPARATOR . $filename
+                : $basepath . $filename;
 
             $this->driver->isdir($filepath)
                 ->onResolve(function ($error, $isDir) use ($recursive, $filepath, $deferred, &$nodes, &$pending) {
                     if ($isDir) {
                         // node is a directory
                         $node = new Directory($filepath, $this->filesystem);
+                        $nodes[$filepath] = $node;
 
                         if ($recursive) {
                             $this->listFiles($filepath, true)
@@ -74,15 +77,15 @@ class DirectoryScanner
                             ;
                         } else {
                             $pending--;
+                            $this->resolveIfNotPending($pending, $deferred, $nodes);
                         }
                     } else {
                         // node is a file
                         $node = new File($filepath, $this->filesystem);
+                        $nodes[$filepath] = $node;
                         $pending--;
+                        $this->resolveIfNotPending($pending, $deferred, $nodes);
                     }
-
-                    $nodes[$filepath] = $node;
-                    $this->resolveIfNotPending($pending, $deferred, $nodes);
                 })
             ;
         }

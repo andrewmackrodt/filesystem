@@ -7,11 +7,14 @@ namespace Test\Functional;
 use Amp\File\EioDriver;
 use Amp\File\StatCache;
 use Amp\Loop;
-use Denimsoft\File\AsyncFileInfo;
+use Amp\Success;
+use Denimsoft\File\Directory;
+use Denimsoft\File\File;
+use Denimsoft\File\Node;
 use const Amp\File\LOOP_STATE_IDENTIFIER;
 use function Test\Support\proxy;
 
-abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
+abstract class NodeTestCase extends \PHPUnit\Framework\TestCase
 {
     public function setUp()
     {
@@ -69,7 +72,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
      */
     public function testGettersFileOrDirectoryPath(string $pathname)
     {
-        $this->assertGettersSame($pathname);
+        $this->assertSameGettersAsSplFileInfo($pathname);
     }
 
     /**
@@ -83,7 +86,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
         symlink($pathname, $link);
 
         try {
-            $this->assertGettersSame($link);
+            $this->assertSameGettersAsSplFileInfo($link);
         } finally {
             if (file_exists($link)) {
                 @unlink($link);
@@ -91,34 +94,35 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
         }
     }
 
-    protected function extractAsyncFileInfo(AsyncFileInfo $fileInfo)
+    protected function extractAsyncFileInfo(Node $node)
     {
-        /** @var AsyncFileInfo $proxy */
-        $proxy = proxy($fileInfo);
+        /** @var Node $proxy */
+        $proxy = proxy($node);
 
         return [
             'atime'       => $proxy->atime(),
             'basename'    => $proxy->basename(),
             'ctime'       => $proxy->ctime(),
-            'dir'         => $proxy->dir(),
-            'executable'  => $proxy->executable(),
+            'dir'         => new Success(\file_exists($node->pathname) && $node instanceof Directory),
+            'exists'      => $proxy->exists(),
+            'executable'  => $proxy->isExecutable(),
             'extension'   => $proxy->extension(),
-            'file'        => $proxy->file(),
+            'file'        => new Success(\file_exists($node->pathname) && $node instanceof File),
             'filename'    => $proxy->filename(),
             'group'       => $proxy->group(),
             'inode'       => $proxy->inode(),
             'link'        => $proxy->link(),
-            'link_target' => $proxy->linktarget(),
+            'link_target' => $proxy->linkTarget(),
             'mtime'       => $proxy->mtime(),
             'owner'       => $proxy->owner(),
             'path'        => $proxy->path(),
             'pathname'    => $proxy->pathname(),
             'perms'       => $proxy->permissions(),
-            'readable'    => $proxy->readable(),
+            'readable'    => $proxy->isReadable(),
             'real_path'   => $proxy->realpath(),
             'size'        => $proxy->size(),
             'type'        => $proxy->type(),
-            'writable'    => $proxy->writable(),
+            'writable'    => $proxy->isWritable(),
         ];
     }
 
@@ -133,7 +137,8 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
             'ctime'       => $proxy->getCTime(),
             'dir'         => $proxy->isDir(),
             'executable'  => $proxy->isExecutable(),
-            'extension'   => $proxy->getExtension(),
+            'exists'      => \file_exists($fileInfo->getPathname()),
+            'extension'   => $proxy->getExtension() ?: null,
             'file'        => $proxy->isFile(),
             'filename'    => $proxy->getFilename(),
             'group'       => $proxy->getGroup(),
@@ -142,7 +147,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
             'link_target' => $proxy->getLinkTarget(),
             'mtime'       => $proxy->getMTime(),
             'owner'       => $proxy->getOwner(),
-            'path'        => $proxy->getPath(),
+            'path'        => $proxy->getPath() ?: null,
             'pathname'    => $proxy->getPathname(),
             'perms'       => $proxy->getPerms(),
             'readable'    => $proxy->isReadable(),
@@ -155,7 +160,7 @@ abstract class FileInfoTestCase extends \PHPUnit\Framework\TestCase
 
     abstract protected function getTestFileInfoData(string $pathname): array;
 
-    private function assertGettersSame(string $pathname)
+    private function assertSameGettersAsSplFileInfo(string $pathname)
     {
         $expected = $this->extractSplFileInfo(new \SplFileInfo($pathname));
         $actual   = $this->getTestFileInfoData($pathname);

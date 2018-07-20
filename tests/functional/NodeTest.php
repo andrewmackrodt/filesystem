@@ -6,18 +6,24 @@ namespace Test\Functional;
 
 use Amp\Loop;
 use Amp\Promise;
-use Denimsoft\File\AsyncFileInfo;
+use Denimsoft\File\Directory;
+use Denimsoft\File\File;
 use Denimsoft\File\Filesystem;
 use function Amp\File\driver;
 use function Amp\Promise\any;
 use function Test\Support\failedThrowableToArray;
 
-class AsyncFileInfoTest extends FileInfoTestCase
+class NodeTest extends NodeTestCase
 {
     protected function getTestFileInfoData(string $pathname): array
     {
         $filesystem = new Filesystem(driver());
-        $promises   = $this->extractAsyncFileInfo(new AsyncFileInfo($pathname, $filesystem));
+
+        $node = is_dir($pathname)
+            ? new Directory($pathname, $filesystem)
+            : new File($pathname, $filesystem);
+
+        $promises = $this->extractAsyncFileInfo($node);
         $this->assertArrayOf(Promise::class, $promises);
 
         // resolve promises

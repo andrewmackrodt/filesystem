@@ -7,25 +7,23 @@ namespace Denimsoft\File;
 use Amp\Deferred;
 use Amp\File\Driver;
 use Amp\Promise;
-use Amp\Success;
 use function Amp\File\filesystem;
 
 class Filesystem
 {
     /**
-     * @var DirectoryScanner
-     */
-    private $directoryScanner;
-
-    /**
      * @var Driver
      */
     private $driver;
+    /**
+     * @var Scanner
+     */
+    private $scanner;
 
     public function __construct(Driver $driver = null)
     {
-        $this->driver           = $driver ?? filesystem();
-        $this->directoryScanner = new DirectoryScanner($this, $this->driver);
+        $this->driver  = $driver ?? filesystem();
+        $this->scanner = new Scanner($this, $this->driver);
     }
 
     /**
@@ -95,30 +93,6 @@ class Filesystem
     }
 
     /**
-     * @param string $path
-     *
-     * @return \Amp\Promise<File|Directory>
-     */
-    public function fileinfo(string $path): Promise
-    {
-        $deferred = new Deferred();
-
-        $this->driver->isdir($path)
-            ->onResolve(function ($error, $result) use ($path, $deferred) {
-                if ($result) {
-                    $node = new Directory($path, $this);
-                } else {
-                    $node = new File($path, $this);
-                }
-
-                $deferred->resolve($node);
-            })
-        ;
-
-        return $deferred->promise();
-    }
-
-    /**
      * Buffer the specified file's contents.
      *
      * @param string $path The file path from which to buffer contents
@@ -140,8 +114,19 @@ class Filesystem
      *
      * @return \Amp\Promise<bool>
      */
-    public function isdir(string $path): Promise
+    public function isDir(string $path): Promise
     {
+        $deferred = new Deferred();
+
+        // prefer stat over isdir to use cache
+        $this->driver->stat($path)
+            ->onResolve(function ($error, $result) use ($deferred) {
+                $isDir = $result ? decoct($result['mode'])[0] === '4' : false;
+
+                $deferred->resolve($isDir);
+            })
+        ;
+
         return $this->driver->isdir(...func_get_args());
     }
 
@@ -155,9 +140,20 @@ class Filesystem
      *
      * @return \Amp\Promise<bool>
      */
-    public function isfile(string $path): Promise
+    public function isFile(string $path): Promise
     {
-        return $this->driver->isfile(...func_get_args());
+        $deferred = new Deferred();
+
+        // prefer stat over isfile to use cache
+        $this->driver->stat($path)
+            ->onResolve(function ($error, $result) use ($deferred) {
+                $isDir = $result ? decoct($result['mode'])[0] !== '4' : false;
+
+                $deferred->resolve($isDir);
+            })
+        ;
+
+        return $this->driver->isdir(...func_get_args());
     }
 
     /**
@@ -168,7 +164,7 @@ class Filesystem
      *
      * @return \Amp\Promise
      */
-    public function link(string $target, string $link): Promise
+    public function isLink(string $target, string $link): Promise
     {
         return $this->driver->link(...func_get_args());
     }
@@ -209,6 +205,30 @@ class Filesystem
     public function mtime(string $path): Promise
     {
         return $this->driver->mtime(...func_get_args());
+    }
+
+    /**
+     * @param string $path
+     *
+     * @return \Amp\Promise<Node>
+     */
+    public function node(string $path): Promise
+    {
+        $deferred = new Deferred();
+
+        $this->driver->isdir($path)
+            ->onResolve(function ($error, $result) use ($path, $deferred) {
+                if ($result) {
+                    $node = new Directory($path, $this);
+                } else {
+                    $node = new File($path, $this);
+                }
+
+                $deferred->resolve($node);
+            })
+        ;
+
+        return $deferred->promise();
     }
 
     /**
@@ -275,8 +295,7 @@ class Filesystem
     }
 
     /**
-     * Retrieve an array of AsyncFileInfo representing files and directories
-     * inside the specified path.
+     * Retrieve an array of File|Directory inside the specified path.
      *
      * @param string $path
      * @param bool   $recursive
@@ -285,7 +304,7 @@ class Filesystem
      */
     public function scandir(string $path, bool $recursive = false): Promise
     {
-        return $this->directoryScanner->listFiles($path, $recursive);
+        return $this->scanner->listFiles($path, $recursive);
     }
 
     /**
